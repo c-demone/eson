@@ -19,14 +19,10 @@ type Progress struct {
 	Width       int
 }
 
-func (p Progress) init() {
-	if p.Show
-}
-
 func (p Progress) NewBar() *progressbar.ProgressBar {
 
 	writer := ansi.NewAnsiStdout()
-	if p.ColorCodes == true {
+	if p.ColorCodes != true {
 		writer = os.Stdout
 	}
 
