@@ -105,7 +105,7 @@ func (q VersionQuery) Post() OsvResponse {
 	}
 
 	var result OsvResponse 
-	json.NewDecoder(resp.Body).Decoder(&res)
+	json.NewDecoder(resp.Body).Decoder(&result)
 
 	return result
 }
@@ -123,7 +123,7 @@ func (q CommitQuery) Post() OsvResponse {
 	}
 
 	var result OsvResponse
-	json.NewDecoder(resp.Body).Decoder(&res)
+	json.NewDecoder(resp.Body).Decoder(&result)
 
 	return result
 }
