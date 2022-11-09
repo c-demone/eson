@@ -1,15 +1,15 @@
 package services
 
 import (
-	"log"
+	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"log"
 	"net/http"
-	"net/url"
 )
 
 const (
 	osvUrl = "https://api.osv.dev/v1/query"
+	header = "application/json"
 )
 
 type response map[string]interface{}
@@ -18,13 +18,13 @@ type Query interface {
 	Post() OsvResponse
 }
 
-type pkgData struct {
-	Name string      `json:"name"`
+type PkgData struct {
+	Name      string `json:"name"`
 	Ecosystem string `json:"ecosystem"`
 }
 type VersionQuery struct {
-	Version   string  `json:"version"`
-	Package   pkgData `json:"package"`
+	Version string  `json:"version"`
+	Package PkgData `json:"package"`
 }
 
 type CommitQuery struct {
@@ -32,98 +32,136 @@ type CommitQuery struct {
 }
 
 type severity struct {
-	Type  string `json:type`
-	Score string `json:score`
+	Type  string `json:"type"`
+	Score string `json:"score"`
 }
 
 type pkg struct {
-	Ecosystem string `json:ecosystem`
-	Name      string `json:name`
-	Purl      string `json:purl`
+	Ecosystem string `json:"ecosystem"`
+	Name      string `json:"name"`
+	Purl      string `json:"purl"`
 }
 
 type events struct {
-	Introduced   string `json:introduced`
-	Fixed        string `json:fixed`
-	LastAffected string `json:last_affected`
-	Limit        string `json:limit`
+	Introduced   string `json:"introduced"`
+	Fixed        string `json:"fixed"`
+	LastAffected string `json:"last_affected"`
+	Limit        string `json:"limit"`
 }
 
 type ranges struct {
-	Type       string   `json:type`
-	Repo       string   `json:repo`
-	Events     []events `json:events`
-	DbSpecific response `json:database_sepcific`
+	Type       string   `json:"type"`
+	Repo       string   `json:"repo"`
+	Events     []events `json:"events"`
+	DbSpecific response `json:"database_sepcific"`
 }
 
 type affected struct {
-	Package     pkg      `json:package`
-	Ranges      ranges   `json:ranges`
-	Versions    []string `json:versions`
-	EcoSpecific response `json:ecosystem_specific`
-	DbSpecific  response `json:database_specific`
+	Package     pkg      `json:"package"`
+	Ranges      ranges   `json:"ranges"`
+	Versions    []string `json:"versions"`
+	EcoSpecific response `json:"ecosystem_specific"`
+	DbSpecific  response `json:"database_specific"`
 }
 
 type references struct {
-	Type string `json:references`
-	Url  string `json:url`
+	Type string `json:"references"`
+	Url  string `json:"url"`
 }
 
 type credits struct {
-	Name    string   `json:name`
-	Contact []string `json:contact`
+	Name    string   `json:"name"`
+	Contact []string `json:"contact"`
+}
+
+type OsvReport struct {
+	SchemaVersion string       `json:"schema_version"`
+	Id            string       `json:"id"`
+	Modified      string       `json:"modified"`
+	Published     string       `json:"published`
+	Withdrawn     string       `json:"withdrawn"`
+	Aliases       string       `json:"aliases"`
+	Related       string       `json:"related"`
+	Summary       string       `json:"summary"`
+	Details       string       `json:"details"`
+	Serverity     []severity   `json:"severity"`
+	Affected      []affected   `json:"affected"`
+	References    []references `json:"references"`
+	Credits       []credits    `json:"credits"`
+	DbSpecific    response     `json:"database_specific"`
 }
 
 type OsvResponse struct {
-	SchemaVersion string       `json:schema_version`
-	Id            string       `json:id`
-	Modified      string       `json:modified`
-	Published     string       `json:published`
-	Withdrawn     string       `json:withdrawn`
-	Aliases       string       `json:aliases`
-	Related       string       `json:related`
-	Summary       string       `json:summary`
-	Details       string       `json:details`
-	Serverity     []severity   `json:severity`
-	Affected      []affected   `json:affected`
-	References    []references `json:references`
-	Credits       []credits    `json:credits`
-	DbSpecific    response     `json:database_specific`
+	Vulns []OsvReport `json:"vulns"`
 }
 
 func (q VersionQuery) Post() OsvResponse {
 
-	data := url.Values{
-		"version": {q.Version},
-		"package": {q.Package},
-	}
-
-	resp, err := http.PostForm(osvUrl, data)
+	// Marshal data struct to json
+	data, err := json.Marshal(q)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var result OsvResponse 
-	json.NewDecoder(resp.Body).Decoder(&result)
+	// Build http request
+	req, err := http.NewRequest("POST", osvUrl, bytes.NewBuffer(data))
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Set basic request header
+	req.Header.Set("Content-Type", header)
+
+	// Initiate http client
+	client := &http.Client{}
+
+	// Send post request and store response
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	// Decode response body onto target struct
+	var result OsvResponse
+	json.NewDecoder(resp.Body).Decode(&result)
 
 	return result
 }
 
 func (q CommitQuery) Post() OsvResponse {
 
-	data := url.Values{
-		"commit": {q.Commit}
+	// Marshal data struct to json
+	data, err := json.Marshal(q)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	resp, err := http.PostForm(osvUrl, data)
+	// Build http request with basic header
+	req, err := http.NewRequest("POST", osvUrl, bytes.NewBuffer(data))
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("Content-Type", header)
+
+	// Initiate http client
+	client := &http.Client{}
+
+	// Send post request and store response
+	resp, err := client.Do(req)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	defer resp.Body.Close()
+
+	// Decode response body onto target struct
 	var result OsvResponse
-	json.NewDecoder(resp.Body).Decoder(&result)
+	json.NewDecoder(resp.Body).Decode(&result)
 
 	return result
 }
