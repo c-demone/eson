@@ -30,14 +30,3 @@ func Fstring(format string, data Fdata) (string, error) {
 	}
 	return output.String(), nil
 }
-
-/*
-func Command(cmd exec.Command) interface{} {
-
-	stdin, err := cmd.StdinPipe()
-
-	if strings.Contains(stdin, "conda info") {
-
-	}
-
-}*/
