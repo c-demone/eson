@@ -29,7 +29,7 @@ const (
 	pip_path    = "{{.Home}}/.local/lib"
 	poetry_path = "{{.Home}}/.local/share/pypoetry"
 	pipenv_path = "{{.Home}}/.local/share/virtualenvs"
-	conda_path  = "{{.Home}/.conda"
+	conda_path  = "{{.Home}}/.conda"
 )
 
 var dms = []string{"sys", "pip", "poetry", "pipenv", "virtualenv", "conda"}
@@ -76,6 +76,7 @@ type PyFsArgs struct {
 // and return scan results with structured queries
 func (args PyFsArgs) NewFsScan() DmQuery {
 	var p pyPaths
+	var res DmQuery
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -87,14 +88,14 @@ func (args PyFsArgs) NewFsScan() DmQuery {
 		"Home": homeDir,
 	}
 
+	p = p.gen_search_paths(args)
+
 	if args.All == true {
-		p.gen_search_paths()
-		res, _ := p.allScan()
+		res, _ = p.allScan()
 		// handle errors
 		return res
 	}
 
-	var res DmQuery
 	if slices.Contains(args.DepManager, "sys") == true {
 		res, _ = p.systemScan(res)
 
@@ -119,40 +120,51 @@ func (args PyFsArgs) NewFsScan() DmQuery {
 	return res
 }
 
-func (p pyPaths) gen_search_paths() pyPaths {
-	p.System = dist()
+func (p pyPaths) gen_search_paths(args PyFsArgs) pyPaths {
+	var err error
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	data := utils.Fdata{
-		"Home": homeDir,
+	data := utils.Fdata{"Home": homeDir}
+
+	if slices.Contains(args.DepManager, "sys") == true || args.All == true {
+		p.System = dist()
 	}
 
-	p.Pip, err = utils.Fstring(pip_path, data)
-	if err != nil {
-		log.Fatal(err)
+	if slices.Contains(args.DepManager, "pip") == true || args.All == true {
+		p.Pip, err = utils.Fstring(pip_path, data)
+		//fmt.Printf("HERE: %s\n", p.Pip)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	p.Poetry, err = utils.Fstring(poetry_path, data)
-	if err != nil {
-		log.Fatal(err)
+	if slices.Contains(args.DepManager, "poetry") == true || args.All == true {
+		p.Poetry, err = utils.Fstring(poetry_path, p.data)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	p.Pipenv, err = utils.Fstring(pipenv_path, data)
-	if err != nil {
-		log.Fatal(err)
+	if slices.Contains(args.DepManager, "pipenv") == true ||
+		slices.Contains(dms, "virtualenv") == true ||
+		args.All == true {
+		p.Pipenv, err = utils.Fstring(pipenv_path, p.data)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	p.Conda, err = get_conda_envs()
-	if err != nil {
-		log.Fatal(err)
+	if slices.Contains(args.DepManager, "conda") == true || args.All == true {
+		p.Conda, err = get_conda_envs(p.data)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-
 	return p
-
 }
 
 func dist() string {
@@ -173,11 +185,7 @@ func dist() string {
 	return syspath
 }
 
-func get_conda_envs(home string) ([]string, error) {
-
-	data := utils.Fdata{
-		"Home": home,
-	}
+func get_conda_envs(data utils.Fdata) ([]string, error) {
 
 	cpath, err := utils.Fstring(conda_path, data)
 	if err != nil {
@@ -190,7 +198,7 @@ func get_conda_envs(home string) ([]string, error) {
 		return nilSlice, nil
 	}
 
-	file, err := os.Open(cpath + "environments.txt")
+	file, err := os.Open(cpath + "/environments.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -257,7 +265,12 @@ func FsScan(root string, dm string) (DmQueryMap, error) {
 					idx := slices.IndexFunc(slice, func(s string) bool { return s == "lib" })
 
 					if dm == "conda" {
-						dmMap[slice[idx-1]] = m
+						cidx := slices.IndexFunc(slice, func(s string) bool { return s == ".conda" })
+						if cidx < 0 {
+							dmMap[strings.Join(slice[:idx], "/")] = m
+						} else {
+							dmMap[slice[idx-1]] = m
+						}
 					} else {
 						raw_venv := strings.Split(slice[idx-1], "-")
 						venv_name := strings.Join(raw_venv[:len(raw_venv)-1], "-")
@@ -276,9 +289,9 @@ func FsScan(root string, dm string) (DmQueryMap, error) {
 
 func MergeResSlices(mapslice []DmQueryMap) DmQueryMap {
 	merged := make(DmQueryMap)
-
 	for i := range mapslice {
 		for k1, v1 := range mapslice[i] {
+			merged[k1] = QueryMap{}
 			for k2, v2 := range v1 {
 				merged[k1][k2] = append(merged[k1][k2], v2...)
 			}
@@ -288,43 +301,61 @@ func MergeResSlices(mapslice []DmQueryMap) DmQueryMap {
 }
 
 func (p pyPaths) systemScan(res DmQuery) (DmQuery, error) {
-	qmap, err := FsScan(p.System, "sys")
-	res.Sys = qmap["sys"]
-	return res, err
+	if _, err := os.Stat(p.System); os.IsNotExist(err) {
+		return res, err
+	} else {
+		qmap, err := FsScan(p.System, "sys")
+		res.Sys = qmap["sys"]
+		return res, err
+	}
 }
 
 func (p pyPaths) pipScan(res DmQuery) (DmQuery, error) {
-	qmap, err := FsScan(p.Pip, "pip")
-	res.Pip = qmap["pip"]
-	return res, err
-
+	if _, err := os.Stat(p.Pip); os.IsNotExist(err) {
+		return res, err
+	} else {
+		qmap, err := FsScan(p.Pip, "pip")
+		res.Pip = qmap["pip"]
+		return res, err
+	}
 }
 
 func (p pyPaths) poetryScan(res DmQuery) (DmQuery, error) {
-	qmap, err := FsScan(p.Pipenv, "poetry")
-	res.Poetry = qmap
-	return res, err
-
+	if _, err := os.Stat(p.Poetry); os.IsNotExist(err) {
+		return res, err
+	} else {
+		qmap, err := FsScan(p.Poetry, "poetry")
+		res.Poetry = qmap
+		return res, err
+	}
 }
 
 // works for both pipenv and virtualenv arguments
 func (p pyPaths) pipenvScan(res DmQuery) (DmQuery, error) {
-	qmap, err := FsScan(p.Pipenv, "pipenv")
-	res.Pipenv = qmap
-	return res, err
-
+	if _, err := os.Stat(p.Pipenv); os.IsNotExist(err) {
+		return res, err
+	} else {
+		qmap, err := FsScan(p.Pipenv, "pipenv")
+		res.Pipenv = qmap
+		return res, err
+	}
 }
 
 func (p pyPaths) condaScan(res DmQuery) (DmQuery, []error) {
-	var scanResults []DmQueryMap
 	var errs []error
-	for _, path := range p.Conda {
-		qmap, err := FsScan(path, "conda")
-		scanResults = append(scanResults, qmap)
+	if _, err := os.Stat(p.Conda[0]); os.IsNotExist(err) {
 		errs = append(errs, err)
+		return res, errs
+	} else {
+		var scanResults []DmQueryMap
+		for _, path := range p.Conda {
+			qmap, err := FsScan(path, "conda")
+			scanResults = append(scanResults, qmap)
+			errs = append(errs, err)
+		}
+		res.Conda = MergeResSlices(scanResults)
+		return res, errs
 	}
-	res.Conda = MergeResSlices(scanResults)
-	return res, errs
 }
 
 func (p pyPaths) allScan() (DmQuery, []error) {
