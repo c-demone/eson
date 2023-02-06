@@ -307,10 +307,7 @@ func (p pyPaths) poetryScan(res DmQuery) (DmQuery, error) {
 
 }
 
-// pipenv scan will scan all virtualenvs
-// same method can be used for both arguments
-// and should only be run once if both pipenv and
-// virtualenv are specified
+// works for both pipenv and virtualenv arguments
 func (p pyPaths) pipenvScan(res DmQuery) (DmQuery, error) {
 	qmap, err := FsScan(p.Pipenv, "pipenv")
 	res.Pipenv = qmap
@@ -318,7 +315,6 @@ func (p pyPaths) pipenvScan(res DmQuery) (DmQuery, error) {
 
 }
 
-// conda can have multiple paths to search - need to adjust
 func (p pyPaths) condaScan(res DmQuery) (DmQuery, []error) {
 	var scanResults []DmQueryMap
 	var errs []error
@@ -337,33 +333,31 @@ func (p pyPaths) allScan() (DmQuery, []error) {
 	var res DmQuery
 	var err error
 
-	res, err = systemScan(DmQuery)
+	res, err = p.systemScan(res)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	res, err = pipScan(DmQuery)
+	res, err = p.pipScan(res)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	res, err = poetryScan(DmQuery)
+	res, err = p.poetryScan(res)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	res, err = virtualenvScan(DmQuery)
+	res, err = p.pipenvScan(res)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	res, errors = condaScan(DmQuery)
+	res, errors = p.condaScan(res)
 	if len(errors) > 0 {
 		for _, e := range errors {
 			errs = append(errs, e)
 		}
 	}
-
 	return res, errors
-
 }
