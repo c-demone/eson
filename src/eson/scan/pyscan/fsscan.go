@@ -119,14 +119,6 @@ func (args PyFsArgs) NewFsScan() DmQuery {
 	return res
 }
 
-//}
-
-/* connect with NewFsScan : move homeDir def inside
-   of NewFsScan and only generate paths that are needed
-   e.g args: eson fsscan python pip poetry pipenv -> only generate
-   pip poetry and pipenv paths
-   e.g args eson fsscan python all -> generate all paths
-*/
 func (p pyPaths) gen_search_paths() pyPaths {
 	p.System = dist()
 
