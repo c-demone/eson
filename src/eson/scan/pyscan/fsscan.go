@@ -123,20 +123,12 @@ func (args PyFsArgs) NewFsScan() DmQuery {
 func (p pyPaths) gen_search_paths(args PyFsArgs) pyPaths {
 	var err error
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	data := utils.Fdata{"Home": homeDir}
-
 	if slices.Contains(args.DepManager, "sys") == true || args.All == true {
 		p.System = dist()
 	}
 
 	if slices.Contains(args.DepManager, "pip") == true || args.All == true {
-		p.Pip, err = utils.Fstring(pip_path, data)
-		//fmt.Printf("HERE: %s\n", p.Pip)
+		p.Pip, err = utils.Fstring(pip_path, p.data)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -172,6 +164,7 @@ func dist() string {
 	var syspath string
 	var si sysinfo.SysInfo
 
+	si.GetSysInfo()
 	vendor := &si.OS.Vendor
 
 	if string(*vendor) == "ubuntu" {
@@ -181,7 +174,6 @@ func dist() string {
 	if string(*vendor) == "redhat" {
 		syspath = "/usr/lib64"
 	}
-
 	return syspath
 }
 
@@ -218,7 +210,6 @@ func get_conda_envs(data utils.Fdata) ([]string, error) {
 func ReadMetadata(path string) svc.VersionQuery {
 	var pkgdata svc.VersionQuery
 	pkgdata.Package.Ecosystem = ecosystem
-
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -257,9 +248,15 @@ func FsScan(root string, dm string) (DmQueryMap, error) {
 				log.Fatal(err)
 			}
 			if matched == true {
-				pyversion := exp.FindAllString(path, -1)
-				m[pyversion[0]] = append(m[pyversion[0]], ReadMetadata(path+"/METADATA"))
-
+				//pyversion := exp.FindAllString(path, -1)
+				if _, err := os.Stat(path + "/METADATA"); os.IsNotExist(err) {
+					return nil
+				} else {
+					if strings.Contains(path, "pkgs") == false {
+						pyversion := exp.FindAllString(path, -1)
+						m[pyversion[0]] = append(m[pyversion[0]], ReadMetadata(path+"/METADATA"))
+					}
+				}
 				if dm != "sys" && dm != "pip" {
 					slice := strings.Split(path, "/")
 					idx := slices.IndexFunc(slice, func(s string) bool { return s == "lib" })
@@ -392,3 +389,10 @@ func (p pyPaths) allScan() (DmQuery, []error) {
 	}
 	return res, errors
 }
+
+// run scan on all queries and tabulate data for output
+//func (res DmQuery) Scan(outformat string) {
+// outformat = table || csv:/path/to/write || json:/path/to/write
+// for csv and json if no ":" in outformat, then write to current
+// working directory
+//}
